@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>My Shop - Inscription</title>
+    <link rel="stylesheet" href="../static/style.css">
+</head>
+<body>
+    <div style="max-width:300px; margin:100px auto; text-align:center;">
+        <h2>Créer un compte</h2>
+        <form action="/signup" method="POST">
+            <input type="text" name="utilisateur" placeholder="Pseudo" required style="width:100%; margin-bottom:10px;">
+            <input type="email" name="email" placeholder="Email" required style="width:100%; margin-bottom:10px;">
+            <input type="password" name="mdp" placeholder="Mot de passe" required style="width:100%; margin-bottom:20px;">
+            <button type="submit" style="width:100%; background:#2e7d32; color:white; padding:10px;">S'inscrire</button>
+        </form>
+    </div>
+</body>
+</html>

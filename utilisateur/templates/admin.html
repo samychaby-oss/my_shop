@@ -1,0 +1,935 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MyShop Admin</title>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <style>
+    :root {
+      --bg:       #f5f4f0;
+      --surface:  #ffffff;
+      --surface2: #f0ede8;
+      --border:   rgba(0,0,0,0.08);
+      --border2:  rgba(0,0,0,0.14);
+      --text:     #1a1916;
+      --muted:    #6b6a66;
+      --accent:   #2a5be8;
+      --accent-d: #1e47c7;
+      --red:      #c0392b;
+      --red-bg:   rgba(192,57,43,0.1);
+      --amber:    #92570c;
+      --amber-bg: rgba(146,87,12,0.1);
+      --green:    #2d7a4f;
+      --green-bg: rgba(45,122,79,0.1);
+      --blue:     #185fa5;
+      --blue-bg:  rgba(24,95,165,0.1);
+      --radius:   10px;
+      --radius-sm:6px;
+      --font:     'Syne', sans-serif;
+      --mono:     'DM Mono', monospace;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: var(--font); background: var(--bg); color: var(--text); font-size: 14px; line-height: 1.5; min-height: 100vh; }
+
+    .layout { display: grid; grid-template-columns: 240px 1fr; min-height: 100vh; }
+
+    /* ── Sidebar ── */
+    .sidebar { background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; position: sticky; top: 0; height: 100vh; overflow-y: auto; }
+    .sidebar-logo { padding: 20px; border-bottom: 1px solid var(--border); font-size: 18px; font-weight: 700; letter-spacing: -0.5px; }
+    .sidebar-logo span { color: var(--accent); }
+    .store-selector { padding: 14px 16px; border-bottom: 1px solid var(--border); }
+    .store-selector label { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); display: block; margin-bottom: 6px; }
+    .store-select { width: 100%; padding: 8px 10px; background: var(--surface2); border: 1px solid var(--border2); border-radius: var(--radius-sm); color: var(--text); font-family: var(--font); font-size: 13px; font-weight: 500; cursor: pointer; outline: none; }
+    .store-select:focus { border-color: var(--accent); }
+    .store-type-badge { display: inline-block; margin-top: 6px; padding: 3px 10px; border-radius: 99px; font-size: 10px; font-weight: 600; }
+    .type-alimentation { background: rgba(45,122,79,0.15); color: var(--green); }
+    .type-cafe         { background: rgba(146,87,12,0.15); color: var(--amber); }
+    .type-patisserie   { background: rgba(24,95,165,0.15); color: var(--blue); }
+    .sidebar-section { padding: 16px 16px 6px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); }
+    .nav-item { display: flex; align-items: center; padding: 10px 16px; margin: 1px 8px; border-radius: var(--radius-sm); font-size: 13px; font-weight: 500; color: var(--muted); cursor: pointer; transition: all 0.15s; border: none; background: none; width: calc(100% - 16px); text-align: left; font-family: var(--font); }
+    .nav-item:hover { background: var(--surface2); color: var(--text); }
+    .nav-item.active { background: var(--accent); color: #fff; font-weight: 600; }
+    .sidebar-footer { margin-top: auto; padding: 16px; border-top: 1px solid var(--border); font-size: 12px; color: var(--muted); }
+
+    /* ── Main ── */
+    .main { padding: 28px 32px; background: var(--bg); }
+    .page-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; }
+    .page-title { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; }
+    .page-sub   { font-size: 13px; color: var(--muted); margin-top: 3px; }
+    .section { display: none; }
+    .section.active { display: block; }
+
+    /* ── Cards ── */
+    .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 20px; margin-bottom: 16px; }
+    .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+    .card-title { font-size: 14px; font-weight: 600; }
+
+    /* ── Metrics ── */
+    .metrics { display: grid; grid-template-columns: repeat(4,1fr); gap: 14px; margin-bottom: 20px; }
+    .metric { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px; }
+    .metric-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-bottom: 10px; }
+    .metric-val   { font-size: 28px; font-weight: 700; letter-spacing: -1px; font-family: var(--mono); }
+    .metric-change { font-size: 12px; margin-top: 5px; }
+    .up { color: var(--green); } .down { color: var(--red); }
+
+    /* ── Charts ── */
+    .charts-row { display: grid; grid-template-columns: 1.4fr 1fr; gap: 16px; margin-bottom: 16px; }
+    .chart-tabs { display: flex; gap: 4px; }
+    .chart-tab { padding: 4px 10px; border-radius: 99px; font-size: 11px; font-weight: 500; border: none; cursor: pointer; font-family: var(--font); transition: all 0.15s; }
+    .chart-tab.active { background: var(--blue-bg); color: var(--blue); }
+    .chart-tab:not(.active) { background: transparent; color: var(--muted); border: 1px solid var(--border2); }
+
+    /* ── Heures par jour ── */
+    .jours-grid { display: grid; grid-template-columns: repeat(7,1fr); gap: 10px; }
+    .jour-card { background: var(--surface2); border-radius: var(--radius-sm); padding: 12px 8px; text-align: center; }
+    .jour-nom   { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin-bottom: 6px; }
+    .jour-heure { font-size: 20px; font-weight: 700; color: var(--accent); font-family: var(--mono); }
+    .jour-sub   { font-size: 10px; color: var(--muted); margin-top: 3px; }
+
+    /* ── Top produits ── */
+    .top-item { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+    .top-nom { font-size: 13px; min-width: 140px; }
+    .top-bar-w { flex: 1; height: 5px; background: var(--surface2); border-radius: 3px; }
+    .top-bar { height: 5px; border-radius: 3px; background: var(--accent); }
+    .top-val { font-size: 12px; color: var(--muted); font-family: var(--mono); min-width: 30px; text-align: right; }
+
+    /* ── Tables ── */
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    thead th { text-align: left; padding: 10px 14px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); border-bottom: 1px solid var(--border); white-space: nowrap; }
+    tbody td { padding: 11px 14px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+    tbody tr:last-child td { border-bottom: none; }
+    tbody tr:hover td { background: var(--surface2); }
+
+    /* ── Badges ── */
+    .badge { display: inline-block; padding: 3px 9px; border-radius: 99px; font-size: 11px; font-weight: 600; }
+    .badge-green { background: var(--green-bg); color: var(--green); }
+    .badge-amber { background: var(--amber-bg); color: var(--amber); }
+    .badge-red   { background: var(--red-bg);   color: var(--red);   }
+    .badge-blue  { background: var(--blue-bg);  color: var(--blue);  }
+
+    /* ── Buttons ── */
+    .btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: var(--radius-sm); border: 1px solid var(--border2); background: var(--surface2); color: var(--text); font-family: var(--font); font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.15s; }
+    .btn:hover { background: var(--surface); }
+    .btn-accent { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+    .btn-accent:hover { background: var(--accent-d); }
+    .btn-sm { padding: 5px 10px; font-size: 12px; }
+    .btn-danger { color: var(--red); border-color: rgba(192,57,43,0.3); background: transparent; }
+    .btn-danger:hover { background: var(--red-bg); }
+
+    /* ── Forms ── */
+    .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .form-group { margin-bottom: 14px; }
+    .form-group label { display: block; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin-bottom: 6px; }
+    input, select, textarea { width: 100%; padding: 9px 12px; font-size: 13px; font-family: var(--font); border: 1px solid var(--border2); border-radius: var(--radius-sm); background: var(--surface2); color: var(--text); outline: none; transition: border-color 0.15s; }
+    input:focus, select:focus, textarea:focus { border-color: var(--accent); }
+    .search-row { display: flex; gap: 10px; margin-bottom: 16px; }
+    .search-row input { flex: 1; }
+
+    /* ── Modal ── */
+    .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 100; align-items: center; justify-content: center; }
+    .modal-overlay.open { display: flex; }
+    .modal { background: var(--surface); border: 1px solid var(--border2); border-radius: var(--radius); padding: 28px; width: 100%; max-width: 480px; }
+    .modal-title { font-size: 17px; font-weight: 700; margin-bottom: 20px; }
+    .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border); }
+
+    /* ── Toast ── */
+    #toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(10px); background: var(--text); color: #fff; padding: 10px 22px; border-radius: 99px; font-size: 13px; font-weight: 600; opacity: 0; transition: all 0.25s; z-index: 200; pointer-events: none; white-space: nowrap; }
+    #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+    #toast.error { background: var(--red); }
+
+    /* ── Loading ── */
+    .loading { display: flex; align-items: center; justify-content: center; padding: 40px; color: var(--muted); font-size: 13px; gap: 10px; }
+    .spinner { width: 18px; height: 18px; border: 2px solid var(--border2); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.7s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+    .empty { text-align: center; padding: 48px 24px; color: var(--muted); font-size: 14px; }
+
+    /* ── MUR ── */
+    .cmd-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 14px; }
+    .cmd-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; position: relative; transition: all 0.2s; }
+    .cmd-card.urgent { border-color: rgba(192,57,43,0.4); box-shadow: 0 0 0 2px rgba(192,57,43,0.08); }
+    .cmd-top { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+    .cmd-id  { font-size: 11px; color: var(--muted); font-family: var(--mono); }
+    .cmd-heure-badge { font-size: 12px; font-weight: 600; padding: 3px 9px; border-radius: 99px; }
+    .ch-ok  { background: var(--green-bg); color: var(--green); }
+    .ch-red { background: var(--red-bg); color: var(--red); }
+    .cmd-client { font-size: 14px; font-weight: 600; margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
+    .avatar { width: 28px; height: 28px; border-radius: 50%; background: var(--blue-bg); color: var(--blue); display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; flex-shrink: 0; }
+    .cmd-produits { font-size: 12px; color: var(--muted); margin-bottom: 10px; line-height: 1.6; }
+    .cmd-total { font-size: 16px; font-weight: 700; margin-bottom: 10px; font-family: var(--mono); }
+    .timer-row { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+    .timer-bar-w { flex: 1; height: 4px; background: var(--surface2); border-radius: 2px; }
+    .timer-fill { height: 4px; border-radius: 2px; transition: width 1s linear; }
+    .tf-green { background: var(--green); } .tf-amber { background: #e8a838; } .tf-red { background: var(--red); }
+    .timer-txt { font-size: 11px; font-weight: 600; min-width: 36px; text-align: right; font-family: var(--mono); }
+    .tt-green { color: var(--green); } .tt-amber { color: #92570c; } .tt-red { color: var(--red); }
+    .cmd-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .btn-pret  { padding: 9px; border: none; border-radius: var(--radius-sm); background: var(--accent); color: #fff; font-family: var(--font); font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.15s; }
+    .btn-pret:hover  { background: var(--accent-d); }
+    .btn-pret:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-recup { padding: 9px; border: 1px solid var(--border2); border-radius: var(--radius-sm); background: transparent; color: var(--text); font-family: var(--font); font-size: 12px; font-weight: 500; cursor: pointer; transition: all 0.15s; }
+    .btn-recup:hover { background: var(--green-bg); border-color: var(--green); color: var(--green); }
+    .btn-recup.done  { background: var(--green); color: #fff; border-color: var(--green); }
+    .btn-recup:disabled { opacity: 0.4; cursor: not-allowed; }
+    .pret-badge { position: absolute; top: 12px; right: 12px; background: var(--green); color: #fff; font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 99px; }
+
+    /* ── Produits ── */
+    .prod-img { width: 36px; height: 36px; object-fit: contain; background: #fff; border-radius: 4px; flex-shrink: 0; }
+    .cell-prod { display: flex; align-items: center; gap: 10px; }
+    .prix-input  { width: 85px; font-family: var(--mono); text-align: right; padding: 5px 8px; font-size: 12px; }
+    .stock-input { width: 70px; padding: 5px 8px; font-size: 12px; }
+    .alert-banner { background: var(--amber-bg); border: 1px solid rgba(146,87,12,0.3); border-radius: var(--radius-sm); padding: 10px 14px; font-size: 13px; color: var(--amber); margin-bottom: 16px; font-weight: 500; }
+
+    /* ── ML ── */
+    .ml-summary { display: grid; grid-template-columns: repeat(4,1fr); gap: 14px; margin-bottom: 20px; }
+    .ml-card { border-radius: var(--radius); padding: 16px; text-align: center; }
+    .ml-card.rouge { background: var(--red-bg); }
+    .ml-card.amber { background: var(--amber-bg); }
+    .ml-card.vert  { background: var(--green-bg); }
+    .ml-card.bleu  { background: var(--blue-bg); }
+    .ml-num { font-size: 26px; font-weight: 700; font-family: var(--mono); }
+    .ml-num.rouge { color: var(--red); }
+    .ml-num.amber { color: var(--amber); }
+    .ml-num.vert  { color: var(--green); }
+    .ml-num.bleu  { color: var(--blue); }
+    .ml-lbl { font-size: 11px; color: var(--muted); margin-top: 5px; }
+
+    /* ── Auto badge ── */
+    .auto-badge { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border-radius: 99px; font-size: 12px; font-weight: 600; background: var(--green-bg); color: var(--green); }
+    .pulse-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); animation: pulse 1.5s infinite; }
+
+    /* ── Prob bar ── */
+    .prob-bar  { flex: 1; height: 5px; background: var(--surface2); border-radius: 99px; }
+    .prob-fill { height: 5px; border-radius: 99px; }
+
+    /* ── Periode tabs ── */
+    .periode-tabs { display: flex; gap: 4px; }
+    .ptab { padding: 4px 10px; border-radius: 99px; font-size: 11px; font-weight: 500; border: 1px solid var(--border2); background: transparent; color: var(--muted); cursor: pointer; font-family: var(--font); }
+    .ptab.active { background: var(--text); color: #fff; border-color: var(--text); }
+
+    /* ── ML tabs ── */
+    .ml-tabs-row { display: flex; gap: 6px; margin-bottom: 16px; }
+    .ml-tab-btn { padding: 7px 16px; border-radius: var(--radius-sm); font-size: 13px; font-weight: 500; border: 1px solid var(--border2); background: var(--surface); color: var(--muted); cursor: pointer; font-family: var(--font); transition: all 0.15s; }
+    .ml-tab-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+    .ml-tab-btn:hover:not(.active) { background: var(--surface2); }
+  </style>
+</head>
+<body>
+
+<div class="layout">
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="sidebar-logo">MY<span>SHOP</span></div>
+    <div class="store-selector">
+      <label>Magasin actif</label>
+      <select class="store-select" id="store-select" onchange="changerMagasin()">
+        <option value="">Chargement…</option>
+      </select>
+      <div id="store-type-badge"></div>
+    </div>
+    <div class="sidebar-section">Navigation</div>
+    <button class="nav-item active" onclick="navigate('mur', this)">Mur des commandes</button>
+    <button class="nav-item" onclick="navigate('analyses', this)">Analyses</button>
+    <button class="nav-item" onclick="navigate('produits', this)">Produits</button>
+    <button class="nav-item" onclick="navigate('ml', this)">Prévisions ML</button>
+    <div class="sidebar-footer">
+      <div style="font-weight:600;color:var(--text);margin-bottom:2px;">Admin</div>
+      <div>admin@myshop.fr</div>
+    </div>
+  </aside>
+
+  <!-- MAIN -->
+  <main class="main">
+
+    <!-- MUR DES COMMANDES -->
+    <section id="sec-mur" class="section active">
+      <div class="page-header">
+        <div>
+          <div class="page-title">Mur des commandes</div>
+          <div class="page-sub" id="mur-sub">Commandes du jour</div>
+        </div>
+        <div id="mur-badges" style="display:flex;gap:8px;"></div>
+      </div>
+      <div id="mur-content"><div class="loading"><span class="spinner"></span> Chargement…</div></div>
+    </section>
+
+    <!-- ANALYSES -->
+    <section id="sec-analyses" class="section">
+      <div class="page-header">
+        <div>
+          <div class="page-title">Analyses</div>
+          <div class="page-sub" id="analyses-sub">—</div>
+        </div>
+        <div id="analyses-date" style="font-size:12px;color:var(--muted);"></div>
+      </div>
+
+      <!-- Métriques -->
+      <div class="metrics">
+        <div class="metric"><div class="metric-label">CA aujourd'hui</div><div class="metric-val" id="m-cajour">—</div><div class="metric-change" id="m-cajour-c"></div></div>
+        <div class="metric"><div class="metric-label">CA ce mois</div><div class="metric-val" id="m-camois">—</div><div class="metric-change" id="m-camois-c"></div></div>
+        <div class="metric"><div class="metric-label">Mois précédent</div><div class="metric-val" id="m-caprec">—</div><div class="metric-change" id="m-caprec-c"></div></div>
+        <div class="metric"><div class="metric-label">Commandes aujourd'hui</div><div class="metric-val" id="m-nbjour">—</div><div class="metric-change" id="m-nbjour-c"></div></div>
+      </div>
+
+      <!-- Graphiques -->
+      <div class="charts-row">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">Évolution du CA</span>
+            <div class="chart-tabs">
+              <button class="chart-tab active" onclick="switchCATab('mois', this)">Par mois</button>
+              <button class="chart-tab" onclick="switchCATab('semaine', this)">Par semaine</button>
+            </div>
+          </div>
+          <div style="position:relative;height:180px;"><canvas id="chartCA"></canvas></div>
+        </div>
+        <div class="card">
+          <div class="card-header"><span class="card-title">Top 3 produits ce mois</span></div>
+          <div id="top-produits"><div class="loading"><span class="spinner"></span></div></div>
+        </div>
+      </div>
+
+      <!-- Heures de pointe par jour -->
+      <div class="card">
+        <div class="card-header">
+          <span class="card-title">Heures de pointe par jour</span>
+          <span style="font-size:11px;color:var(--muted);">Analyse 6 mois</span>
+        </div>
+        <div class="jours-grid" id="jours-pointe">
+          <div class="loading"><span class="spinner"></span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- PRODUITS -->
+    <section id="sec-produits" class="section">
+      <div class="page-header">
+        <div>
+          <div class="page-title">Produits</div>
+          <div class="page-sub" id="p-sous">—</div>
+        </div>
+        <button class="btn btn-accent" onclick="openProduitModal()">+ Ajouter un produit</button>
+      </div>
+      <div id="stock-alert" class="alert-banner" style="display:none;"></div>
+      <div class="search-row">
+        <input type="text" id="prod-search" placeholder="Rechercher…" oninput="filterProduits()" />
+        <select id="prod-status" onchange="filterProduits()">
+          <option value="">Tous statuts</option>
+          <option value="active">Actif</option>
+          <option value="low">Stock bas</option>
+          <option value="out">Rupture</option>
+        </select>
+      </div>
+      <div class="card" style="padding:0;">
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Photo</th><th>Produit</th><th>Catégorie</th><th>Prix</th><th>Stock</th><th>Statut</th><th>Nouveau prix</th><th>Nouveau stock</th><th>Actions</th></tr></thead>
+            <tbody id="prod-body"><tr><td colspan="9"><div class="loading"><span class="spinner"></span> Chargement…</div></td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- PRÉVISIONS ML -->
+    <section id="sec-ml" class="section">
+      <div class="page-header">
+        <div>
+          <div class="page-title">Prévisions ML</div>
+          <div class="page-sub" id="ml-sous">—</div>
+        </div>
+        <div class="auto-badge"><div class="pulse-dot"></div>Modèle actif — apprend en continu</div>
+      </div>
+
+      <div class="ml-tabs-row"></div>
+
+      <!-- Onglet Produits -->
+      <div id="ml-section-produits">
+        <div class="ml-summary">
+          <div class="ml-card bleu"><div class="ml-num bleu" id="ml-ca">—</div><div class="ml-lbl">CA prévu</div></div>
+          <div class="ml-card rouge"><div class="ml-num rouge" id="ml-cout">—</div><div class="ml-lbl">Coût d'achat prévu</div></div>
+          <div class="ml-card vert"><div class="ml-num vert" id="ml-marge">—</div><div class="ml-lbl">Marge prévue</div></div>
+          <div class="ml-card amber"><div class="ml-num amber" id="ml-cmd">—</div><div class="ml-lbl">À commander</div></div>
+        </div>
+        <div class="card" style="padding:0;">
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Produit</th><th>Stock actuel</th><th>Prévision ventes</th><th>À commander</th><th>Prix achat</th><th>Coût achat</th><th>Revenu prévu</th><th>Recommandation</th></tr></thead>
+              <tbody id="ml-body"><tr><td colspan="8"><div class="loading"><span class="spinner"></span> Entraînement…</div></td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Onglet Clients -->
+      <div id="ml-section-clients" style="display:none;">
+        <div class="ml-summary">
+          <div class="ml-card bleu"><div class="ml-num bleu" id="cl-actifs">—</div><div class="ml-lbl">Clients actifs</div></div>
+          <div class="ml-card vert"><div class="ml-num vert" id="cl-retour">—</div><div class="ml-lbl">Retour probable</div></div>
+          <div class="ml-card amber"><div class="ml-num amber" id="cl-fideles">—</div><div class="ml-lbl">Très fidèles</div></div>
+          <div class="ml-card rouge"><div class="ml-num rouge" id="cl-risque">—</div><div class="ml-lbl">À risque</div></div>
+        </div>
+        <div class="card" style="padding:0;">
+          <div class="card-header" style="padding:12px 16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;">
+            <span style="font-size:13px;font-weight:600;">Probabilité de retour par client</span>
+            <div class="periode-tabs">
+              <button class="ptab active" id="ptab-semaine" onclick="switchPeriode('semaine',this)">Cette semaine</button>
+              <button class="ptab" id="ptab-mois"   onclick="switchPeriode('mois',this)">Ce mois</button>
+              <button class="ptab" id="ptab-3mois"  onclick="switchPeriode('3mois',this)">3 mois</button>
+              <button class="ptab" id="ptab-6mois"  onclick="switchPeriode('6mois',this)">6 mois</button>
+            </div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Client</th><th>Commandes</th><th>Fréquence</th><th>Probabilité de retour</th><th>Statut</th></tr></thead>
+              <tbody id="cl-body"><tr><td colspan="5"><div class="loading"><span class="spinner"></span></div></td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Onglet Finances -->
+      <div id="ml-section-finances" style="display:none;">
+        <div class="metrics" style="grid-template-columns:repeat(3,1fr);">
+          <div class="metric"><div class="metric-label">CA prévu mois prochain</div><div class="metric-val" id="fin-ca">—</div><div class="metric-change" id="fin-ca-c"></div></div>
+          <div class="metric"><div class="metric-label">Coût d'achat total</div><div class="metric-val" id="fin-cout">—</div><div class="metric-change" style="color:var(--muted);">Pour réapprovisionner</div></div>
+          <div class="metric"><div class="metric-label">Marge prévue</div><div class="metric-val" id="fin-marge">—</div><div class="metric-change" id="fin-marge-c"></div></div>
+        </div>
+        <div class="card">
+          <div class="card-header"><span class="card-title">Répartition du revenu par produit</span></div>
+          <div id="fin-detail"><div class="loading"><span class="spinner"></span></div></div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<!-- MODAL PRODUIT -->
+<div class="modal-overlay" id="modal-produit">
+  <div class="modal">
+    <div class="modal-title" id="modal-prod-title">Ajouter un produit</div>
+    <div class="form-row">
+      <div class="form-group"><label>Nom *</label><input type="text" id="p-nom" /></div>
+      <div class="form-group"><label>Catégorie *</label><input type="text" id="p-cat" /></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>Prix (€) *</label><input type="number" id="p-prix" min="0" step="0.01" /></div>
+      <div class="form-group"><label>Stock *</label><input type="number" id="p-stock" min="0" /></div>
+    </div>
+    <div class="form-group"><label>Seuil alerte</label><input type="number" id="p-seuil" placeholder="10" /></div>
+    <div class="form-group"><label>Description</label><textarea id="p-desc" rows="2" style="resize:vertical;"></textarea></div>
+    <input type="hidden" id="p-id" />
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal('modal-produit')">Annuler</button>
+      <button class="btn btn-accent" onclick="sauvegarderProduit()">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL CONFIRM -->
+<div class="modal-overlay" id="modal-confirm">
+  <div class="modal" style="max-width:360px;">
+    <div class="modal-title">Confirmer la suppression</div>
+    <p style="font-size:13px;color:var(--muted);" id="confirm-msg">Voulez-vous supprimer ce produit ?</p>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeModal('modal-confirm')">Annuler</button>
+      <button class="btn btn-danger" id="confirm-btn">Supprimer</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const API = '/api';
+let magasinActif = null;
+let magasins     = [];
+let produitsData = [];
+let chartCA      = null;
+let caParMois    = [];
+let caParSemaine = [];
+let mlTabActif   = 'produits';
+let periodeActif = 'semaine';
+let mlPrevisions = [];
+
+// ── HTTP ──────────────────────────────────────────────────
+async function api(method, path, body = null) {
+  const opts = { method, headers: { 'Content-Type': 'application/json' } };
+  if (body) opts.body = JSON.stringify(body);
+  const res = await fetch(API + path, opts);
+  if (!res.ok) { const e = await res.json().catch(()=>({})); throw new Error(e.error || `Erreur ${res.status}`); }
+  return res.json();
+}
+const GET  = p     => api('GET', p);
+const POST = (p,b) => api('POST', p, b);
+const PUT  = (p,b) => api('PUT',  p, b);
+const DEL  = p     => api('DELETE', p);
+
+// ── Navigation ────────────────────────────────────────────
+function navigate(name, btn) {
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('sec-' + name).classList.add('active');
+  btn.classList.add('active');
+  if (!magasinActif) return;
+  ({ mur: loadMur, analyses: loadAnalyses, produits: loadProduits, ml: loadML })[name]?.();
+}
+
+// ── Toast ─────────────────────────────────────────────────
+function toast(msg, isError = false) {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = isError ? 'error' : '';
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 3000);
+}
+
+// ── Modals ────────────────────────────────────────────────
+function openModal(id)  { document.getElementById(id).classList.add('open'); }
+function closeModal(id) { document.getElementById(id).classList.remove('open'); }
+document.querySelectorAll('.modal-overlay').forEach(o => {
+  o.addEventListener('click', e => { if (e.target === o) o.classList.remove('open'); });
+});
+
+// ── Helpers ───────────────────────────────────────────────
+const eur      = n => new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', minimumFractionDigits: 0 }).format(n || 0);
+const initials = n => (n||'?').split(' ').slice(0,2).map(w=>w[0]||'').join('').toUpperCase();
+function extractHeure(adresse) { const m = (adresse||'').match(/(\d{2}:\d{2})/); return m ? m[1] : '—'; }
+function stockStatus(qty, seuil=10) { if (qty===0) return 'out'; if (qty<=seuil) return 'low'; return 'active'; }
+function stockBadge(qty, seuil) {
+  const s = stockStatus(qty, seuil);
+  const map = { active:['Actif','badge-green'], low:['Stock bas','badge-amber'], out:['Rupture','badge-red'] };
+  const [label, cls] = map[s];
+  return `<span class="badge ${cls}">${label}</span>`;
+}
+function getProdImage(p) {
+  if (p.image_url) return `<img class="prod-img" src="${p.image_url}" alt="${p.nom}" onerror="this.style.display='none'" />`;
+  return `<div style="width:36px;height:36px;border-radius:4px;background:var(--surface2);display:flex;align-items:center;justify-content:center;font-size:18px;">📦</div>`;
+}
+function probColor(p) { return p >= 75 ? 'var(--green)' : p >= 50 ? '#e8a838' : p >= 30 ? 'var(--amber)' : 'var(--red)'; }
+
+// ── Magasins ──────────────────────────────────────────────
+async function chargerMagasins() {
+  try {
+    magasins = await GET('/magasins');
+    const sel = document.getElementById('store-select');
+    const groupes = {};
+    magasins.forEach(m => { if (!groupes[m.type]) groupes[m.type] = []; groupes[m.type].push(m); });
+    const labels = { alimentation:'Alimentations', cafe:'Cafés', patisserie:'Pâtisseries' };
+    let html = '';
+    Object.keys(groupes).forEach(type => {
+      html += `<optgroup label="${labels[type]||type}">`;
+      groupes[type].forEach(m => { html += `<option value="${m.id}">${m.nom}</option>`; });
+      html += '</optgroup>';
+    });
+    sel.innerHTML = html;
+    if (magasins.length) { magasinActif = magasins[0]; updateStoreBadge(); loadMur(); }
+  } catch(err) { toast('Erreur magasins: ' + err.message, true); }
+}
+
+function changerMagasin() {
+  const id = parseInt(document.getElementById('store-select').value);
+  magasinActif = magasins.find(m => m.id === id);
+  updateStoreBadge();
+  const section = document.querySelector('.section.active')?.id?.replace('sec-', '');
+  if (section) ({ mur:loadMur, analyses:loadAnalyses, produits:loadProduits, ml:loadML })[section]?.();
+}
+
+function updateStoreBadge() {
+  if (!magasinActif) return;
+  const labels = { alimentation:'Alimentation', cafe:'Café', patisserie:'Pâtisserie' };
+  const type = magasinActif.type || 'alimentation';
+  document.getElementById('store-type-badge').innerHTML =
+    `<span class="store-type-badge type-${type}">${labels[type]||type}</span>`;
+}
+
+// ── MUR DES COMMANDES ─────────────────────────────────────
+async function loadMur() {
+  if (!magasinActif) return;
+  document.getElementById('mur-sub').textContent = `${magasinActif.nom} · Commandes du jour`;
+  try {
+    const commandes = await GET(`/mur-commandes/${magasinActif.id}`);
+    renderMur(commandes);
+  } catch(err) { toast('Erreur mur: ' + err.message, true); }
+}
+
+function renderMur(commandes) {
+  const urgentes = commandes.filter(c => c.statut === 'en_attente').length;
+  const pretes   = commandes.filter(c => c.statut === 'en_cours').length;
+  document.getElementById('mur-badges').innerHTML =
+    (urgentes > 0 ? `<span class="badge badge-red">${urgentes} en attente</span>` : '') +
+    (pretes   > 0 ? `<span class="badge badge-green">${pretes} prête(s)</span>` : '');
+
+  if (!commandes.length) {
+    document.getElementById('mur-content').innerHTML = `<div class="empty">Aucune commande en attente aujourd'hui</div>`;
+    return;
+  }
+  document.getElementById('mur-content').innerHTML = `<div class="cmd-grid">${commandes.map(renderCmdCard).join('')}</div>`;
+}
+
+function renderCmdCard(c) {
+  const heure  = extractHeure(c.adresse_livraison);
+  const isPret = c.statut === 'en_cours';
+  const isDone = c.statut === 'livree';
+  const produits = Array.isArray(c.produits) ? c.produits.map(p=>`• ${p.nom} ×${p.quantite}`).join('<br>') : '—';
+  return `
+    <div class="cmd-card ${isDone?'pret':''}" id="cmd-card-${c.id}">
+      ${isPret ? '<div class="pret-badge">PRÊT</div>' : ''}
+      <div class="cmd-top">
+        <span class="cmd-id">#${c.id}</span>
+        <span class="cmd-heure-badge ${isPret||isDone?'ch-ok':'ch-red'}">${heure}</span>
+      </div>
+      <div class="cmd-client"><div class="avatar">${initials(c.clientName)}</div>${c.clientName}</div>
+      <div class="cmd-produits">${produits}</div>
+      <div class="cmd-total">${eur(c.total)}</div>
+      <div class="timer-row">
+        <div class="timer-bar-w"><div class="timer-fill tf-green" id="timer-bar-${c.id}" style="width:100%;"></div></div>
+        <span class="timer-txt tt-green" id="timer-txt-${c.id}">10:00</span>
+      </div>
+      <div class="cmd-btns">
+        <button class="btn-pret" onclick="marquerPret(${c.id})" ${isPret||isDone?'disabled':''}>Prêt</button>
+        <button class="btn-recup ${isDone?'done':''}" onclick="marquerRecupere(${c.id})" ${isDone?'disabled':''}>
+          ${isDone?'Récupéré':'Récupéré'}
+        </button>
+      </div>
+    </div>`;
+}
+
+async function marquerPret(id) {
+  try { await PUT(`/mur-commandes/${id}/statut`, {statut:'en_cours'}); toast('Commande prête'); loadMur(); }
+  catch(err) { toast('Erreur: '+err.message, true); }
+}
+async function marquerRecupere(id) {
+  try { await PUT(`/mur-commandes/${id}/statut`, {statut:'livree'}); toast('Commande récupérée'); loadMur(); }
+  catch(err) { toast('Erreur: '+err.message, true); }
+}
+
+// ── ANALYSES ──────────────────────────────────────────────
+async function loadAnalyses() {
+  if (!magasinActif) return;
+  document.getElementById('analyses-sub').textContent = magasinActif.nom;
+  document.getElementById('analyses-date').textContent = new Date().toLocaleDateString('fr-FR', {day:'2-digit',month:'long',year:'numeric'});
+  try {
+    const [data, joursData] = await Promise.all([
+      GET(`/analyses/${magasinActif.id}`),
+      GET(`/heures-pointe/${magasinActif.id}`),
+    ]);
+
+    document.getElementById('m-cajour').textContent = eur(data.ca_jour);
+    document.getElementById('m-camois').textContent = eur(data.ca_mois);
+    document.getElementById('m-caprec').textContent = eur(data.ca_mois_prec);
+    document.getElementById('m-nbjour').textContent = data.nb_jour ?? 0;
+
+    const diffJour = data.ca_hier > 0 ? Math.round((data.ca_jour - data.ca_hier) / data.ca_hier * 100) : 0;
+    const diffMois = data.ca_mois_prec > 0 ? Math.round((data.ca_mois - data.ca_mois_prec) / data.ca_mois_prec * 100) : 0;
+    document.getElementById('m-cajour-c').innerHTML = `<span class="${diffJour>=0?'up':'down'}">${diffJour>=0?'↑':'↓'} ${Math.abs(diffJour)}% vs hier</span>`;
+    document.getElementById('m-camois-c').innerHTML = `<span class="${diffMois>=0?'up':'down'}">${diffMois>=0?'↑':'↓'} ${Math.abs(diffMois)}% vs mois dernier</span>`;
+    document.getElementById('m-caprec-c').innerHTML = `<span style="color:var(--muted)">Mois précédent</span>`;
+    document.getElementById('m-nbjour-c').innerHTML = `<span style="color:var(--muted)">${data.nb_hier} hier</span>`;
+
+    caParMois    = data.ca_par_mois    || [];
+    caParSemaine = data.ca_par_semaine || [];
+    renderChartCA('mois');
+
+    // Top produits
+    const topEl = document.getElementById('top-produits');
+    if (data.top_produits && data.top_produits.length) {
+      const max = data.top_produits[0].total;
+      topEl.innerHTML = data.top_produits.map(p =>
+        `<div class="top-item">
+          <span class="top-nom">${p.nom}</span>
+          <div class="top-bar-w"><div class="top-bar" style="width:${Math.round(p.total/max*100)}%;"></div></div>
+          <span class="top-val">${p.total}</span>
+        </div>`
+      ).join('');
+    } else {
+      topEl.innerHTML = `<div class="empty" style="padding:20px;">Pas encore de ventes ce mois</div>`;
+    }
+
+    
+    // Compatibilité avec l'ancienne route heures-pointe
+if (joursData.jours) {
+  renderJoursPointe(joursData.jours);
+} else if (joursData.heures) {
+  // Ancienne route — on affiche juste le pic global
+  document.getElementById('jours-pointe').innerHTML = 
+    `<div class="empty" style="padding:20px;">Pic global : ${joursData.heure_pointe}h</div>`;
+}
+
+  } catch(err) { toast('Erreur analyses: ' + err.message, true); }
+}
+
+function switchCATab(type, btn) {
+  document.querySelectorAll('.chart-tab').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderChartCA(type);
+}
+
+function renderChartCA(type) {
+  const data   = type === 'mois' ? caParMois : caParSemaine;
+  const labels = data.map(d => d.mois || d.jour);
+  const values = data.map(d => d.ca);
+  const ctx    = document.getElementById('chartCA').getContext('2d');
+  if (chartCA) chartCA.destroy();
+  chartCA = new Chart(ctx, {
+    type: 'bar',
+    data: { labels, datasets: [{ label:'CA (€)', data:values, backgroundColor: values.map((_,i)=>i===values.length-1?'#2a5be8':'rgba(42,91,232,0.25)'), borderRadius:4 }] },
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      plugins: { legend:{display:false} },
+      scales: {
+        x: { grid:{display:false}, ticks:{color:'#6b6a66',font:{size:11}} },
+        y: { grid:{color:'rgba(0,0,0,0.05)'}, ticks:{callback:v=>eur(v),color:'#6b6a66',font:{size:10}} }
+      }
+    }
+  });
+}
+
+function renderJoursPointe(jours) {
+  const el = document.getElementById('jours-pointe');
+  if (!jours.length) { el.innerHTML = `<div class="empty">Pas assez de données</div>`; return; }
+  el.innerHTML = jours.map(j => `
+    <div class="jour-card">
+      <div class="jour-nom">${j.jour.substring(0,3)}</div>
+      <div class="jour-heure">${j.heure_pic}h</div>
+      <div class="jour-sub">${j.total} cmd</div>
+    </div>
+  `).join('');
+}
+
+// ── PRODUITS ──────────────────────────────────────────────
+async function loadProduits() {
+  if (!magasinActif) return;
+  try {
+    const data = await GET(`/produits/magasin/${magasinActif.id}`);
+    produitsData = data;
+    document.getElementById('p-sous').textContent = `${magasinActif.nom} — ${data.length} produit(s)`;
+    const ruptures = data.filter(p => (p.stock ?? 0) === 0).length;
+    const alertEl  = document.getElementById('stock-alert');
+    if (ruptures > 0) { alertEl.style.display='block'; alertEl.textContent=`${ruptures} produit(s) en rupture de stock`; }
+    else alertEl.style.display = 'none';
+    renderProduits(data);
+  } catch(err) { toast('Erreur produits: ' + err.message, true); }
+}
+
+function renderProduits(list) {
+  const tbody = document.getElementById('prod-body');
+  if (!list.length) { tbody.innerHTML=`<tr><td colspan="9"><div class="empty">Aucun produit</div></td></tr>`; return; }
+  tbody.innerHTML = list.map(p => {
+    const stock = p.stock ?? 0;
+    const seuil = p.seuil_alerte ?? 10;
+    const sc    = stock===0?'var(--red)':stock<=seuil?'#92570c':'var(--text)';
+    return `<tr>
+      <td>${getProdImage(p)}</td>
+      <td><strong>${p.nom}</strong></td>
+      <td style="color:var(--muted);">${p.categorie??'—'}</td>
+      <td style="font-family:var(--mono);">${eur(p.prix)}</td>
+      <td style="font-family:var(--mono);color:${sc};font-weight:500;">${stock}</td>
+      <td>${stockBadge(stock, seuil)}</td>
+      <td><input type="number" id="prix-${p.id}" value="${p.prix}" min="0" step="0.01" class="prix-input" /></td>
+      <td><input type="number" id="stock-${p.id}" value="${stock}" min="0" class="stock-input" /></td>
+      <td style="white-space:nowrap;display:flex;gap:4px;">
+        <button class="btn btn-sm" onclick="validerPrix(${p.id})">Valider</button>
+        <button class="btn btn-sm" onclick='openProduitModal(${JSON.stringify(p)})'>Modifier</button>
+        <button class="btn btn-sm btn-danger" onclick="confirmSuppr(${p.id})">Suppr.</button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function filterProduits() {
+  const q    = document.getElementById('prod-search').value.toLowerCase();
+  const stat = document.getElementById('prod-status').value;
+  renderProduits(produitsData.filter(p => {
+    const mq = !q    || p.nom.toLowerCase().includes(q);
+    const ms = !stat || stockStatus(p.stock??0, p.seuil_alerte??10) === stat;
+    return mq && ms;
+  }));
+}
+
+async function validerPrix(id) {
+  const prix  = parseFloat(document.getElementById(`prix-${id}`).value);
+  const stock = parseInt(document.getElementById(`stock-${id}`).value);
+  if (isNaN(prix)||isNaN(stock)) { toast('Valeurs invalides', true); return; }
+  try { await PUT(`/stock/${id}`, {prix, stock}); toast('Mis à jour'); loadProduits(); }
+  catch(err) { toast('Erreur: '+err.message, true); }
+}
+
+function openProduitModal(p=null) {
+  document.getElementById('modal-prod-title').textContent = p ? 'Modifier le produit' : 'Ajouter un produit';
+  document.getElementById('p-id').value    = p?.id??'';
+  document.getElementById('p-nom').value   = p?.nom??'';
+  document.getElementById('p-cat').value   = p?.categorie??'';
+  document.getElementById('p-prix').value  = p?.prix??'';
+  document.getElementById('p-stock').value = p?.stock??'';
+  document.getElementById('p-seuil').value = p?.seuil_alerte??10;
+  document.getElementById('p-desc').value  = p?.description??'';
+  openModal('modal-produit');
+}
+
+async function sauvegarderProduit() {
+  const id = document.getElementById('p-id').value;
+  const payload = {
+    nom:         document.getElementById('p-nom').value.trim(),
+    categorie:   document.getElementById('p-cat').value.trim(),
+    prix:        parseFloat(document.getElementById('p-prix').value),
+    stock:       parseInt(document.getElementById('p-stock').value),
+    seuil_alerte:parseInt(document.getElementById('p-seuil').value)||10,
+    description: document.getElementById('p-desc').value.trim(),
+  };
+  if (!payload.nom||isNaN(payload.prix)||isNaN(payload.stock)) { toast('Champs manquants', true); return; }
+  try {
+    if (id) { await PUT(`/produits/${id}`, payload); toast('Mis à jour'); }
+    else    { await POST('/produits', payload); toast('Ajouté'); }
+    closeModal('modal-produit'); loadProduits();
+  } catch(err) { toast('Erreur: '+err.message, true); }
+}
+
+function confirmSuppr(id) {
+  document.getElementById('confirm-msg').textContent = `Supprimer le produit #${id} ?`;
+  document.getElementById('confirm-btn').onclick = async () => {
+    try { await DEL(`/produits/${id}`); toast('Supprimé'); closeModal('modal-confirm'); loadProduits(); }
+    catch(err) { toast('Erreur: '+err.message, true); }
+  };
+  openModal('modal-confirm');
+}
+
+// ── PRÉVISIONS ML ─────────────────────────────────────────
+async function loadML() {
+  if (!magasinActif) return;
+  document.getElementById('ml-sous').textContent = `${magasinActif.nom} — Mise à jour automatique`;
+  loadMLProduits();
+}
+
+function switchMLTab(tab) {
+  mlTabActif = tab;
+  ['produits','clients','finances'].forEach(t => {
+    document.getElementById(`ml-section-${t}`).style.display = t === tab ? 'block' : 'none';
+    document.getElementById(`mltab-${t}`).classList.toggle('active', t === tab);
+  });
+  if (tab === 'produits') loadMLProduits();
+  if (tab === 'clients')  loadMLClients(periodeActif);
+  if (tab === 'finances') loadMLFinances();
+}
+
+async function loadMLProduits() {
+  if (!magasinActif) return;
+  document.getElementById('ml-body').innerHTML = `<tr><td colspan="8"><div class="loading"><span class="spinner"></span> Entraînement du modèle…</div></td></tr>`;
+  try {
+    const data = await GET(`/previsions/${magasinActif.id}`);
+    mlPrevisions = data.previsions || [];
+    const analyse = data.analyse || {};
+    document.getElementById('ml-ca').textContent    = eur(analyse.prevision_ca_mois_prochain || 0);
+    document.getElementById('ml-cout').textContent  = eur(analyse.cout_achat_total || 0);
+    document.getElementById('ml-marge').textContent = eur(analyse.marge_prevue || 0);
+    document.getElementById('ml-cmd').textContent   = analyse.nb_produits_commander ?? 0;
+
+    if (!mlPrevisions.length) {
+      document.getElementById('ml-body').innerHTML = `<tr><td colspan="8"><div class="empty">${data.message||'Pas assez de données'}</div></td></tr>`;
+      return;
+    }
+
+    const recMap = {
+      commander_urgent: p => `<span class="badge badge-red">Commander ${p.a_commander ?? p.quantite_cmd ?? '?'}</span>`,
+commander:        p => `<span class="badge badge-amber">Commander ${p.a_commander ?? p.quantite_cmd ?? '?'}</span>`,
+      reduire:          p => `<span class="badge badge-blue">Réduire le stock</span>`,
+      ok:               p => `<span class="badge badge-green">Stock OK</span>`,
+    };
+
+    document.getElementById('ml-body').innerHTML = mlPrevisions.map(p => {
+      const sc = p.stock_actuel===0?'var(--red)':p.stock_actuel<=p.seuil_alerte?'#92570c':'var(--text)';
+      return `<tr>
+        <td><strong>${p.nom}</strong></td>
+        <td style="font-family:var(--mono);color:${sc};font-weight:600;">${p.stock_actuel}</td>
+        <td style="font-family:var(--mono);font-weight:600;">${p.prevision}</td>
+        <td style="font-family:var(--mono);color:${p.a_commander>0?'var(--red)':'var(--green)'};font-weight:700;">${p.a_commander>0?p.a_commander:'—'}</td>
+        <td style="font-family:var(--mono);">${eur(p.prix_achat)}</td>
+        <td style="font-family:var(--mono);color:var(--red);">${p.cout_achat>0?eur(p.cout_achat):'—'}</td>
+        <td style="font-family:var(--mono);color:var(--green);">${eur(p.revenu_prevu)}</td>
+        <td>${(recMap[p.recommandation]||(() => `<span class="badge badge-blue">${p.recommandation}</span>`))(p)}</td>
+      </tr>`;
+    }).join('');
+  } catch(err) {
+    toast('Erreur ML: '+err.message, true);
+    document.getElementById('ml-body').innerHTML = `<tr><td colspan="8"><div class="empty">Erreur: ${err.message}</div></td></tr>`;
+  }
+}
+
+function switchPeriode(periode, btn) {
+  periodeActif = periode;
+  document.querySelectorAll('.ptab').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  loadMLClients(periode);
+}
+
+async function loadMLClients(periode='semaine') {
+  if (!magasinActif) return;
+  document.getElementById('cl-body').innerHTML = `<tr><td colspan="5"><div class="loading"><span class="spinner"></span></div></td></tr>`;
+  try {
+    const data    = await GET(`/clients-previsions/${magasinActif.id}?periode=${periode}`);
+    const clients = data.clients  || [];
+    const analyse = data.analyse  || {};
+    document.getElementById('cl-actifs').textContent  = analyse.nb_clients_actifs  ?? 0;
+    document.getElementById('cl-retour').textContent  = analyse.nb_retour_probable ?? 0;
+    document.getElementById('cl-fideles').textContent = analyse.nb_tres_fideles    ?? 0;
+    document.getElementById('cl-risque').textContent  = analyse.nb_a_risque        ?? 0;
+
+    if (!clients.length) {
+      document.getElementById('cl-body').innerHTML = `<tr><td colspan="5"><div class="empty">Aucun client sur cette période</div></td></tr>`;
+      return;
+    }
+
+    const statutMap = { 'Très fidèle':'badge-green','Fidèle':'badge-green','Occasionnel':'badge-amber','À risque':'badge-red' };
+    document.getElementById('cl-body').innerHTML = clients.map(c => `<tr>
+      <td><strong>${c.nom}</strong></td>
+      <td style="font-family:var(--mono);">${c.nb_commandes}</td>
+      <td style="color:var(--muted);">${c.frequence}</td>
+      <td>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <div class="prob-bar"><div class="prob-fill" style="width:${c.probabilite}%;background:${probColor(c.probabilite)};"></div></div>
+          <span style="font-family:var(--mono);font-weight:700;color:${probColor(c.probabilite)};min-width:36px;">${c.probabilite}%</span>
+        </div>
+      </td>
+      <td><span class="badge ${statutMap[c.statut]||'badge-blue'}">${c.statut}</span></td>
+    </tr>`).join('');
+  } catch(err) { toast('Erreur clients: '+err.message, true); }
+}
+
+function loadMLFinances() {
+  if (!mlPrevisions.length) { loadMLProduits().then(() => renderFinances()); return; }
+  renderFinances();
+}
+
+function renderFinances() {
+  if (!mlPrevisions.length) return;
+  const ca    = mlPrevisions.reduce((s,r) => s + r.revenu_prevu, 0);
+  const cout  = mlPrevisions.reduce((s,r) => s + r.cout_achat, 0);
+  const marge = ca - cout;
+  document.getElementById('fin-ca').textContent    = eur(ca);
+  document.getElementById('fin-cout').textContent  = eur(cout);
+  document.getElementById('fin-marge').textContent = eur(marge);
+  document.getElementById('fin-ca-c').innerHTML    = `<span style="color:var(--muted);">Mois prochain</span>`;
+  document.getElementById('fin-marge-c').innerHTML = ca>0 ? `<span class="up">${Math.round(marge/ca*100)}% de marge</span>` : '';
+
+  const maxRevenu = Math.max(...mlPrevisions.map(r=>r.revenu_prevu), 1);
+  document.getElementById('fin-detail').innerHTML = mlPrevisions
+    .filter(r => r.revenu_prevu > 0)
+    .sort((a,b) => b.revenu_prevu - a.revenu_prevu)
+    .map(r => `
+      <div class="top-item" style="margin-bottom:10px;">
+        <span class="top-nom" style="min-width:160px;">${r.nom}</span>
+        <div class="top-bar-w"><div class="top-bar" style="width:${Math.round(r.revenu_prevu/maxRevenu*100)}%;"></div></div>
+        <span class="top-val">${eur(r.revenu_prevu)}</span>
+      </div>
+    `).join('');
+}
+
+// ── Init ──────────────────────────────────────────────────
+chargerMagasins();
+</script>
+</body>
+</html>
