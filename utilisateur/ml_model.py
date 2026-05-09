@@ -1,236 +1,141 @@
 import numpy as np
-from datetime import datetime, timedelta
-from sklearn.linear_model import LinearRegression, Ridge
-from sklearn.metrics import r2_score
-import warnings
-warnings.filterwarnings('ignore')
+from datetime import datetime
 
+# ── ÉTAPE 1 : RÉCUPÉRER LES DONNÉES ──────────────────────────
+def collecter_donnees(connexion, id_magasin):
+    curseur = connexion.cursor()
 
-# ── ÉTAPE 1 : Collecter les données ──────────────────────────
-def collecter(conn, magasin_id):
-    cur = conn.cursor()
-
-    # Nom du magasin
-    cur.execute("SELECT nom FROM public.magasins WHERE id = %s", (magasin_id,))
-    nom_magasin = cur.fetchone()[0]
-
-    # Ventes par client par produit sur 6 mois
-    cur.execute("""
-        SELECT
-            u.id                             AS client_id,
-            u.prenom || ' ' || u.nom         AS client_nom,
-            p.id                             AS produit_id,
-            p.nom                            AS produit_nom,
-            pm.prix                          AS prix_vente,
-            pm.prix_achat                    AS prix_achat,
-            pm.stock                         AS stock,
-            COALESCE(p.seuil_alerte, 10)     AS seuil,
-            COUNT(DISTINCT c.id)             AS nb_commandes,
-            COALESCE(AVG(cp.quantite), 0)    AS qte_moyenne
+    # On récupère les ventes des 6 derniers mois avec les infos produits et stocks
+    requete = """
+        SELECT 
+            u.id AS id_client,
+            p.id AS id_produit,
+            p.nom AS nom_produit,
+            pm.prix AS prix_vente,
+            pm.prix_achat AS prix_achat,
+            pm.stock AS stock_actuel,
+            cp.quantite AS qte_achetee
         FROM public.commandes c
-        JOIN public.utilisateurs u       ON u.id = c.utilisateur_id
+        JOIN public.utilisateurs u ON u.id = c.utilisateur_id
         JOIN public.commande_produits cp ON cp.commande_id = c.id
-        JOIN public.produits p           ON p.id = cp.produit_id
-        JOIN public.prix_magasins pm     ON pm.produit_id = p.id AND pm.magasin_id = %s
-        WHERE c.adresse_livraison LIKE %s
-          AND c.created_at >= NOW() - INTERVAL '6 months'
+        JOIN public.produits p ON p.id = cp.produit_id
+        JOIN public.prix_magasins pm ON pm.produit_id = p.id
+        WHERE pm.magasin_id = %s
           AND c.statut != 'annulee'
-          AND pm.magasin_id = %s
-        GROUP BY u.id, u.prenom, u.nom, p.id, p.nom, pm.prix, pm.prix_achat, pm.stock, p.seuil_alerte
-        ORDER BY p.id, nb_commandes DESC
-    """, (magasin_id, f'%{nom_magasin}%', magasin_id))
-    ventes = cur.fetchall()
+          AND c.created_at >= NOW() - INTERVAL '6 months'
+    """
+    curseur.execute(requete, (id_magasin,))
+    ventes_brutes = curseur.fetchall()
+    
+    curseur.close()
+    return ventes_brutes
 
-    # Nouveaux clients par mois sur 6 mois
-    cur.execute("""
-        SELECT DATE_TRUNC('month', MIN(c.created_at)) AS mois, COUNT(*) AS nb
-        FROM public.commandes c
-        WHERE c.adresse_livraison LIKE %s AND c.statut != 'annulee'
-        GROUP BY c.utilisateur_id
-        HAVING MIN(c.created_at) >= NOW() - INTERVAL '6 months'
-        ORDER BY mois
-    """, (f'%{nom_magasin}%',))
-    nouveaux_par_mois = cur.fetchall()
+# ── ÉTAPE 2 : ANALYSER LA FIDÉLITÉ (FRÉQUENCE) ───────────────
+def analyser_comportement_clients(ventes_brutes):
+    # Ce dictionnaire va stocker : "Qui a acheté quoi et combien de fois"
+    suivi_clients = {}
 
-    cur.close()
-    return ventes, nouveaux_par_mois
-
-
-# ── ÉTAPE 2 : Classer les clients ────────────────────────────
-def classer_clients(ventes, nb_mois=6):
-    # Regrouper par client
-    clients = {}
-    for row in ventes:
-        cid = row[0]
-        if cid not in clients:
-            clients[cid] = {
-                'nom': row[1],
-                'nb_commandes': int(row[8]),
-                'produits': {}
+    for ligne in ventes_brutes:
+        id_c, id_p, nom_p, p_vente, p_achat, stock, qte = ligne
+        
+        if id_c not in suivi_clients:
+            suivi_clients[id_c] = {"visites": 0, "achats": {}}
+        
+        # On compte une visite/commande
+        suivi_clients[id_c]["visites"] += 1
+        
+        # On enregistre le produit et la quantité
+        if id_p not in suivi_clients[id_c]["achats"]:
+            suivi_clients[id_c]["achats"][id_p] = {
+                "nom": nom_p, "qte_totale": 0, "prix_v": p_vente, 
+                "prix_a": p_achat, "stock": stock
             }
-        pid = row[2]
-        clients[cid]['produits'][pid] = {
-            'nom':        row[3],
-            'prix_vente': float(row[4] or 0),
-            'prix_achat': float(row[5] or 0),
-            'stock':      int(row[6] or 0),
-            'seuil':      int(row[7] or 10),
-            'qte_moyenne':int(round(float(row[9] or 0))),
-        }
+        
+        suivi_clients[id_c]["achats"][id_p]["qte_totale"] += qte
 
-    # Calculer probabilité de retour
-    for cid, c in clients.items():
-        frequence = c['nb_commandes'] / nb_mois
-        if frequence >= 1.0:   prob = min(95, 90 + int((frequence - 1) * 10))
-        elif frequence >= 0.7: prob = int(70 + (frequence - 0.7) * 66)
-        elif frequence >= 0.4: prob = int(40 + (frequence - 0.4) * 100)
-        elif frequence >= 0.2: prob = int(20 + (frequence - 0.2) * 100)
-        else:                  prob = max(5, int(frequence * 100))
-        c['probabilite'] = prob
+    return suivi_clients
 
-    return clients
+# ── ÉTAPE 3 : PRÉDIRE LES BESOINS DU MOIS PROCHAIN ───────────
+def calculer_previsions(suivi_clients):
+    inventaire_previsionnel = {}
 
+    for id_c, infos in suivi_clients.items():
+        # Score de fidélité : si venu 6 fois en 6 mois = 1.0 (100% de chance de revenir)
+        # Si venu 1 fois en 6 mois = 0.16 (16% de chance)
+        score_fidelite = min(1.0, infos["visites"] / 6)
 
-# ── ÉTAPE 3 : Prédire les nouveaux clients ───────────────────
-def predire_nouveaux_clients(nouveaux_par_mois):
-    if len(nouveaux_par_mois) < 2:
-        return int(np.mean([int(r[1]) for r in nouveaux_par_mois])) if nouveaux_par_mois else 1
-
-    valeurs = np.array([int(r[1]) for r in nouveaux_par_mois], dtype=float)
-    X       = np.arange(len(valeurs)).reshape(-1, 1)
-
-    # Compétition LinearRegression vs Ridge
-    lr    = LinearRegression().fit(X, valeurs)
-    ridge = Ridge(alpha=1.0).fit(X, valeurs)
-
-    score_lr    = r2_score(valeurs, lr.predict(X))
-    score_ridge = r2_score(valeurs, ridge.predict(X))
-
-    if score_ridge >= score_lr:
-        modele, gagnant = ridge, 'Ridge'
-    else:
-        modele, gagnant = lr, 'LinearRegression'
-
-    print(f"    Nouveaux clients — LinearRegression R²={round(score_lr,3)} | Ridge R²={round(score_ridge,3)}")
-    print(f"    Gagnant : {gagnant}")
-
-    nb_prevu = max(1, round(float(modele.predict([[len(valeurs)]])[0])))
-    return int(nb_prevu)
-
-
-# ── ÉTAPE 4 : Prédire les ventes par produit ─────────────────
-def predire_ventes(clients, nb_nouveaux):
-    produits = {}
-
-    # Collecter les infos produits
-    for cid, c in clients.items():
-        for pid, p in c['produits'].items():
-            if pid not in produits:
-                produits[pid] = {
-                    'nom':        p['nom'],
-                    'prix_vente': p['prix_vente'],
-                    'prix_achat': p['prix_achat'],
-                    'stock':      p['stock'],
-                    'seuil':      p['seuil'],
-                    'prevision':  0,
+        for id_p, detail in infos["achats"].items():
+            if id_p not in inventaire_previsionnel:
+                inventaire_previsionnel[id_p] = {
+                    "nom": detail["nom"],
+                    "stock": detail["stock"],
+                    "prix_achat": detail["prix_a"],
+                    "prix_vente": detail["prix_v"],
+                    "ventes_estimees": 0
                 }
+            
+            # La prévision = (Moyenne achetée par mois) * (Probabilité de retour)
+            moyenne_mensuelle = detail["qte_totale"] / 6
+            inventaire_previsionnel[id_p]["ventes_estimees"] += moyenne_mensuelle * score_fidelite
 
-            # Contribution du client = quantité moyenne × probabilité de retour
-            contribution = p['qte_moyenne'] * (c['probabilite'] / 100)
-            produits[pid]['prevision'] += contribution
+    return inventaire_previsionnel
 
-    # Ajouter contribution des nouveaux clients
-    if produits:
-        panier_moyen_qte = np.mean([p['prevision'] for p in produits.values()])
-        for pid in produits:
-            produits[pid]['prevision'] += (nb_nouveaux * panier_moyen_qte) / len(produits)
+# ── ÉTAPE 4 : GÉNÉRER LE RAPPORT FINAL ───────────────────────
+def generer_rapport(inventaire_previsionnel):
+    liste_recommandations = []
 
-    # Arrondir à l'entier
-    for pid in produits:
-        produits[pid]['prevision'] = max(0, int(round(produits[pid]['prevision'])))
-
-    return produits
-
-
-# ── ÉTAPE 5 : Recommandation par produit ─────────────────────
-def recommander(produits):
-    resultats = []
-
-    for pid, p in produits.items():
-        prevision   = p['prevision']
-        stock       = p['stock']
-        seuil       = p['seuil']
-        a_commander = max(0, prevision - stock)
-        cout_achat  = round(a_commander * p['prix_achat'], 2)
-        revenu_prevu= round(prevision   * p['prix_vente'], 2)
-
-        if stock == 0 and prevision > 0:
-            rec, urg, qte = 'commander_urgent', 'critique', prevision + seuil
-        elif a_commander > seuil:
-            rec, urg, qte = 'commander', 'haute', a_commander + seuil
-        elif a_commander > 0:
-            rec, urg, qte = 'commander', 'normale', a_commander
-        elif stock > prevision * 3 and prevision > 0:
-            rec, urg, qte = 'reduire', 'faible', 0
+    for id_p, p in inventaire_previsionnel.items():
+        estimation = round(p["ventes_estimees"])
+        stock_actuel = p["stock"]
+        
+        # Si on va vendre plus que ce qu'on a en stock
+        if estimation > stock_actuel:
+            quantite_a_commander = estimation - stock_actuel
+            statut = "Commander"
+            urgence = "Haute"
         else:
-            rec, urg, qte = 'ok', 'faible', 0
+            quantite_a_commander = 0
+            statut = "Stock OK"
+            urgence = "Basse"
 
-        resultats.append({
-            'produit_id':    pid,
-            'nom':           p['nom'],
-            'prix_actuel':   p['prix_vente'],
-            'prix_achat':    p['prix_achat'],
-            'stock_actuel':  stock,
-            'prevision':     prevision,
-            'a_commander':   int(qte),
-            'cout_achat':    cout_achat,
-            'revenu_prevu':  revenu_prevu,
-            'recommandation':rec,
-            'urgence':       urg,
+        liste_recommandations.append({
+            "nom": p["nom"],
+            "stock_actuel": stock_actuel,
+            "prevision_ventes": estimation,
+            "a_commander": quantite_a_commander,
+            "cout_achat_estime": round(quantite_a_commander * p["prix_achat"], 2),
+            "revenu_attendu": round(estimation * p["prix_vente"], 2),
+            "decision": statut,
+            "urgence": urgence
         })
 
-    ordre = {'critique': 0, 'haute': 1, 'normale': 2, 'faible': 3}
-    resultats.sort(key=lambda x: ordre.get(x['urgence'], 4))
-    return resultats
+    return liste_recommandations
 
-
-# ── Fonction principale appelée par Flask ─────────────────────
-def generer_previsions(conn, magasin_id):
+# ── FONCTION PRINCIPALE (Celle que ton application appelle) ──
+def executer_analyse_stock(connexion, id_magasin):
     try:
-        print("\n--- Collecte des données ---")
-        ventes, nouveaux_par_mois = collecter(conn, magasin_id)
-        if not ventes:
-            return {'previsions': [], 'analyse': {}, 'message': 'Pas de données.'}
-        print(f"    {len(ventes)} lignes récupérées")
-
-        print("\n--- Classement des clients ---")
-        clients = classer_clients(ventes)
-        print(f"    {len(clients)} clients analysés")
-
-        print("\n--- Prédiction nouveaux clients ---")
-        nb_nouveaux = predire_nouveaux_clients(nouveaux_par_mois)
-        print(f"    {nb_nouveaux} nouveaux clients prévus")
-
-        print("\n--- Prévision des ventes par produit ---")
-        produits   = predire_ventes(clients, nb_nouveaux)
-        previsions = recommander(produits)
-
-        ca_prevu   = round(sum(p['revenu_prevu'] for p in previsions), 2)
-        cout_total = round(sum(p['cout_achat']   for p in previsions), 2)
-
-        print(f"    CA prévu : {ca_prevu} €")
+        # On enchaîne les étapes simplement
+        donnees = collecter_donnees(connexion, id_magasin)
+        
+        if not donnees:
+            return {"message": "Aucune donnée de vente disponible."}
+            
+        comportement = analyser_comportement_clients(donnees)
+        previsions = calculer_previsions(comportement)
+        resultat_final = generer_rapport(previsions)
+        
+        # On calcule quelques totaux pour le tableau de bord
+        ca_total = sum(r["revenu_attendu"] for r in resultat_final)
+        achats_total = sum(r["cout_achat_estime"] for r in resultat_final)
 
         return {
-            'previsions': previsions,
-            'analyse': {
-                'prevision_ca_mois_prochain': ca_prevu,
-                'cout_achat_total':           cout_total,
-                'marge_prevue':               round(ca_prevu - cout_total, 2),
-                'nb_produits_commander':      len([p for p in previsions if 'commander' in p['recommandation']]),
-                'nb_produits_ok':             len([p for p in previsions if p['recommandation'] == 'ok']),
+            "previsions": resultat_final,
+            "resume": {
+                "chiffre_affaires_prevu": round(ca_total, 2),
+                "investissement_necessaire": round(achats_total, 2),
+                "marge_estimee": round(ca_total - achats_total, 2)
             },
-            'message':   f"Modèle entraîné sur {len(clients)} clients.",
-            'genere_le': datetime.now().strftime('%d/%m/%Y à %H:%M'),
+            "date": datetime.now().strftime("%d/%m/%Y")
         }
     except Exception as e:
-        return {'previsions': [], 'analyse': {}, 'message': f'Erreur: {str(e)}'}
+        return {"erreur": str(e)}
