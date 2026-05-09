@@ -4,6 +4,7 @@ from datetime import datetime
 # ── ÉTAPE 1 : RÉCUPÉRER LES DONNÉES ──────────────────────────
 def collecter_donnees(connexion, id_magasin):
     curseur = connexion.cursor()
+    # On récupère les ventes des 6 derniers mois
     requete = """
         SELECT 
             u.id AS id_client,
@@ -44,9 +45,10 @@ def analyser_comportement_clients(ventes_brutes):
     return suivi_clients
 
 # ── ÉTAPE 3 : CALCULER LES PRÉVISIONS ────────────────────────
-def calculer_previsions(suivi_clients):
+def calculer_previsions_internes(suivi_clients):
     inventaire_previsionnel = {}
     for id_c, infos in suivi_clients.items():
+        # Plus un client est venu souvent en 6 mois, plus sa probabilité est haute
         score_fidelite = min(1.0, infos["visites"] / 6)
         for id_p, detail in infos["achats"].items():
             if id_p not in inventaire_previsionnel:
@@ -59,51 +61,53 @@ def calculer_previsions(suivi_clients):
             inventaire_previsionnel[id_p]["ventes_estimees"] += moyenne_mensuelle * score_fidelite
     return inventaire_previsionnel
 
-# ── ÉTAPE 4 : GÉNÉRER LE RAPPORT POUR L'INTERFACE ────────────
-def generer_rapport(inventaire_previsionnel):
-    liste_recommandations = []
-    for id_p, p in inventaire_previsionnel.items():
-        estimation = round(p["ventes_estimees"])
-        stock_actuel = p["stock"]
-        
-        a_commander = max(0, estimation - stock_actuel)
-        
-        liste_recommandations.append({
-            "nom": p["nom"],
-            "stock_actuel": stock_actuel,
-            "prevision": estimation, # Ton interface attend "prevision"
-            "a_commander": a_commander,
-            "cout_achat": round(a_commander * p["prix_achat"], 2),
-            "revenu_prevu": round(estimation * p["prix_vente"], 2),
-            "recommandation": "Commander" if a_commander > 0 else "OK",
-            "urgence": "Haute" if a_commander > 0 else "Faible"
-        })
-    return liste_recommandations
-
-# ── FONCTION APPELÉE PAR TON INTERFACE ───────────────────────
-def generer_previsions(connexion, id_magasin):
+# ── ÉTAPE 4 : LA FONCTION PRINCIPALE (Celle que Render appelle) ──
+def generer_previsions(conn, magasin_id):
     try:
-        donnees = collecter_donnees(connexion, id_magasin)
+        # 1. Récupération
+        donnees = collecter_donnees(conn, magasin_id)
         if not donnees:
-            return {"previsions": [], "analyse": {}, "message": "Pas de données."}
+            return {"previsions": [], "analyse": {}, "message": "Aucune donnée trouvée."}
             
+        # 2. Analyse et Calculs
         comportement = analyser_comportement_clients(donnees)
-        previsions = calculer_previsions(comportement)
-        resultats = generer_rapport(previsions)
+        previsions_brutes = calculer_previsions_internes(comportement)
         
-        ca_prevu = sum(r["revenu_prevu"] for r in resultats)
-        cout_total = sum(r["cout_achat"] for r in resultats)
+        # 3. Formatage pour le tableau de l'image
+        liste_finale = []
+        for id_p, p in previsions_brutes.items():
+            estimation = int(round(p["ventes_estimees"]))
+            stock_actuel = p["stock"]
+            a_commander = max(0, estimation - stock_actuel)
+            
+            liste_finale.append({
+                "produit_id": id_p,
+                "nom": p["nom"],
+                "stock_actuel": stock_actuel,
+                "prevision": estimation,     # S'affiche dans 'PRÉVISION VENTES'
+                "a_commander": a_commander,   # S'affiche dans 'À COMMANDER'
+                "prix_achat": p["prix_achat"],
+                "cout_achat": round(a_commander * p["prix_achat"], 2),
+                "revenu_prevu": round(estimation * p["prix_vente"], 2),
+                "recommandation": "Commander" if a_commander > 0 else "OK",
+                "urgence": "Haute" if a_commander > 0 else "Basse"
+            })
+
+        # 4. Résumé pour les compteurs (CA, Marge, etc.)
+        ca_prevu = sum(item["revenu_prevu"] for item in liste_finale)
+        cout_achat = sum(item["cout_achat"] for item in liste_finale)
 
         return {
-            "previsions": resultats,
+            "previsions": liste_finale,
             "analyse": {
                 "prevision_ca_mois_prochain": round(ca_prevu, 2),
-                "cout_achat_total": round(cout_total, 2),
-                "marge_prevue": round(ca_prevu - cout_total, 2),
-                "nb_produits_commander": len([r for r in resultats if r["a_commander"] > 0]),
+                "cout_achat_total": round(cout_achat, 2),
+                "marge_prevue": round(ca_prevu - cout_achat, 2),
+                "nb_produits_commander": len([i for i in liste_finale if i["a_commander"] > 0]),
+                "nb_produits_ok": len([i for i in liste_finale if i["a_commander"] == 0])
             },
-            "message": "Modèle simplifié actif.",
+            "message": f"Analyse réussie pour le magasin {magasin_id}",
             "genere_le": datetime.now().strftime("%d/%m/%Y à %H:%M")
         }
     except Exception as e:
-        return {"previsions": [], "analyse": {}, "message": f"Erreur: {str(e)}"}
+        return {"previsions": [], "analyse": {}, "message": f"Erreur critique: {str(e)}"}
