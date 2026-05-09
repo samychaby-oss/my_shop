@@ -6,12 +6,14 @@ from psycopg2.extras import RealDictCursor
 app = Flask(__name__)
 CORS(app)
 
+import os
+
 def get_db_connection():
     return psycopg2.connect(
-        host="localhost",
-        database="postgres",
-        user="postgres",
-        password="HETIC2026"
+        host=os.environ.get('DB_HOST', 'localhost'),
+        database=os.environ.get('DB_NAME', 'postgres'),
+        user=os.environ.get('DB_USER', 'postgres'),
+        password=os.environ.get('DB_PASSWORD', 'HETIC2026')
     )
 
 app.get_db_connection = get_db_connection
