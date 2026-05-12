@@ -14,23 +14,26 @@ def collecter(conn, magasin_id):
     nom_magasin = cur.fetchone()[0]
 
     cur.execute("""
-        SELECT
-            u.id, u.prenom || ' ' || u.nom,
-            p.id, p.nom, pm.prix, pm.prix_achat, pm.stock,
-            COALESCE(p.seuil_alerte, 10),
-            COUNT(DISTINCT c.id), COALESCE(AVG(cp.quantite), 0)
-        FROM public.commandes c
-        JOIN public.utilisateurs u       ON u.id = c.utilisateur_id
-        JOIN public.commande_produits cp ON cp.commande_id = c.id
-        JOIN public.produits p           ON p.id = cp.produit_id
-        JOIN public.prix_magasins pm     ON pm.produit_id = p.id AND pm.magasin_id = %s
-        WHERE c.adresse_livraison LIKE %s
-          AND c.created_at >= NOW() - INTERVAL '6 months'
-          AND c.statut != 'annulee'
-          AND pm.magasin_id = %s
-        GROUP BY u.id, u.prenom, u.nom, p.id, p.nom, pm.prix, pm.prix_achat, pm.stock, p.seuil_alerte
-        ORDER BY p.id, COUNT(DISTINCT c.id) DESC
-    """, (magasin_id, f'%{nom_magasin}%', magasin_id))
+    SELECT
+        u.id, u.prenom || ' ' || u.nom,
+        p.id, p.nom,
+        MAX(pm.prix)       AS prix_vente,
+        MAX(pm.prix_achat) AS prix_achat,
+        MAX(pm.stock)      AS stock,
+        COALESCE(MAX(p.seuil_alerte), 10),
+        COUNT(DISTINCT c.id), COALESCE(AVG(cp.quantite), 0)
+    FROM public.commandes c
+    JOIN public.utilisateurs u       ON u.id = c.utilisateur_id
+    JOIN public.commande_produits cp ON cp.commande_id = c.id
+    JOIN public.produits p           ON p.id = cp.produit_id
+    JOIN public.prix_magasins pm     ON pm.produit_id = p.id AND pm.magasin_id = %s
+    WHERE c.adresse_livraison LIKE %s
+      AND c.created_at >= NOW() - INTERVAL '6 months'
+      AND c.statut != 'annulee'
+      AND pm.magasin_id = %s
+    GROUP BY u.id, u.prenom, u.nom, p.id, p.nom
+    ORDER BY p.id, COUNT(DISTINCT c.id) DESC
+""", (magasin_id, f'%{nom_magasin}%', magasin_id))
     ventes = cur.fetchall()
 
     cur.execute("""
